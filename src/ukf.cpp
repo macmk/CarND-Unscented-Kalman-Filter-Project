@@ -10,6 +10,7 @@ using std::vector;
 /**
  * Initializes Unscented Kalman filter
  */
+
 UKF::UKF() {
   // if this is false, laser measurements will be ignored (except during init)
   use_laser_ = true;
@@ -24,10 +25,10 @@ UKF::UKF() {
   P_ = MatrixXd(5, 5);
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 30;
+  std_a_ = 3;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 30;
+  std_yawdd_ = 0.3;
 
   // Laser measurement noise standard deviation position1 in m
   std_laspx_ = 0.15;
@@ -43,6 +44,15 @@ UKF::UKF() {
 
   // Radar measurement noise standard deviation radius change in m/s
   std_radrd_ = 0.3;
+
+    // state dimension
+    n_x_ = 5;
+
+    // Augmented state dimension
+    n_aug_ = 7;
+
+    // time when the state is true, in us
+    time_us_ = 0;
 
   /**
   TODO:
@@ -60,12 +70,37 @@ UKF::~UKF() {}
  * either radar or laser.
  */
 void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
-  /**
-  TODO:
+    /**
+    TODO:
 
-  Complete this function! Make sure you switch between lidar and radar
-  measurements.
-  */
+    Complete this function! Make sure you switch between lidar and radar
+    measurements.
+    */
+
+    // skip unused sensors data
+    if (meas_package.sensor_type_ == MeasurementPackage::LASER && !use_laser_ ||
+            meas_package.sensor_type_ == MeasurementPackage::RADAR && !use_radar_) {
+        return;
+    }
+
+    // initialize first
+    if (!is_initialized_) {
+        UKF::Initialize(meas_package);
+        return;
+    }
+
+    // Predict
+    double dt = (meas_package.timestamp_ - time_us_) / 1000000.0; // delta time in seconds
+    time_us_ = meas_package.timestamp_; // update time
+
+    Prediction(dt);
+
+    // Update
+    if (meas_package.sensor_type_ == MeasurementPackage::LASER) {
+        UpdateLidar(meas_package);
+    } else if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {
+        UpdateRadar(meas_package);
+    }
 }
 
 /**
@@ -110,4 +145,31 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
 
   You'll also need to calculate the radar NIS.
   */
+}
+
+void UKF::Initialize(MeasurementPackage meas_package) {
+    x_ << 1, 1, 1, 1, 0.1;
+
+    // init covariance matrix
+    P_ << 0.15,    0, 0, 0, 0,
+            0, 0.15, 0, 0, 0,
+            0,    0, 1, 0, 0,
+            0,    0, 0, 1, 0,
+            0,    0, 0, 0, 1;
+
+    // init timestamp
+    time_us_ = meas_package.timestamp_;
+
+    if (meas_package.sensor_type_ == MeasurementPackage::LASER && use_laser_) {
+        x_(0) = meas_package.raw_measurements_(0);
+        x_(1) = meas_package.raw_measurements_(1);
+    }
+    else if (meas_package.sensor_type_ == MeasurementPackage::RADAR && use_radar_) {
+        double ro = meas_package.raw_measurements_(0);
+        double phi = meas_package.raw_measurements_(1);
+        x_(0) = ro * cos(phi);
+        x_(1) = ro * sin(phi);
+    }
+
+    is_initialized_ = true;
 }
